@@ -1,7 +1,5 @@
 """Service integrations for Nevis assistant."""
 
-# Integrations will be added here as the project grows
-# Examples:
-# - NWslideAI integration
-# - Sales Configurator integration
-# - External API integrations
+from nevis.integrations.notion import NotionIntegration, NotionConfig
+
+__all__ = ["NotionIntegration", "NotionConfig"]
