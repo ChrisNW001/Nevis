@@ -4,15 +4,15 @@
 This script:
 1. Searches ALL meetings in Fireflies for a specific participant
 2. Keeps searching until it finds at least 50 matching meetings (or exhausts all)
-3. Analyzes them using Claude following the segmentation procedure model
-4. Generates a comprehensive analysis report
+3. Analyzes meetings in batches (8 at a time) to avoid token limits
+4. Aggregates batch results into a comprehensive segmentation analysis
 
 Usage:
-    # Find all meetings with Felix Wietschke (searches until 50+ found)
+    # Find all meetings with Felix Wietschke and analyze
     python scripts/run_segmentation_analysis.py --participant "Felix Wietschke"
 
-    # Search for more meetings (up to 1000 = 20 batches x 50)
-    python scripts/run_segmentation_analysis.py --participant "Felix Wietschke" --max-batches 20
+    # Adjust batch size (smaller = safer for long meetings)
+    python scripts/run_segmentation_analysis.py --participant "Felix Wietschke" --batch-size 5
 """
 
 import argparse
@@ -456,8 +456,8 @@ def format_meetings_for_analysis(meetings: list[Meeting]) -> str:
 
 
 async def run_analysis_with_claude(transcripts_text: str) -> dict:
-    """Run the segmentation analysis using Claude Opus 4.5."""
-    print("\nRunning analysis with Claude Opus 4.5...")
+    """Run the segmentation analysis using Claude - legacy single-batch version."""
+    print("\nRunning analysis with Claude...")
 
     client = anthropic.Anthropic()
 
@@ -490,6 +490,277 @@ async def run_analysis_with_claude(transcripts_text: str) -> dict:
         return {"raw_response": response_text}
 
 
+# Simplified prompt for batch analysis - extracts key data points
+BATCH_ANALYSIS_PROMPT = '''Analysiere die folgenden Sales-Transkripte und extrahiere strukturierte Daten.
+
+## TRANSKRIPTE:
+
+{transcripts}
+
+## EXTRAHIERE FOLGENDE DATEN:
+
+1. **Pain Points** mit Codes (PP-OPS, PP-TECH, PP-RES, PP-COMP, PP-CHANGE, PP-KNOW) und Zitaten
+2. **Kaufmotivationen** mit Codes (KM-ROI, KM-RISK, KM-INNO, KM-COMP, KM-GROW) und Zitaten
+3. **Einwaende** mit Codes (EW-PREIS, EW-ZEIT, EW-IMPL, EW-TEAM, EW-PRIOR) und Zitaten
+4. **Kaufsignale** (stark/mittel/schwach) mit Zitaten
+5. **DISC-Profile** der Gespraechspartner (D/I/S/C mit Evidenz)
+6. **Jobs-to-be-Done** im Format "Wenn [Situation], moechte ich [Motivation], damit ich [Ergebnis]"
+7. **Firmographics** (Branche, Groesse, Tech-Reife wenn erkennbar)
+
+ANTWORTE IM JSON-FORMAT:
+{{
+    "batch_info": {{
+        "transcript_count": number,
+        "total_duration_minutes": number
+    }},
+    "pain_points": [
+        {{"code": "PP-XXX", "description": "string", "quotes": ["string"], "frequency": number}}
+    ],
+    "buying_motivations": [
+        {{"code": "KM-XXX", "description": "string", "quotes": ["string"], "frequency": number}}
+    ],
+    "objections": [
+        {{"code": "EW-XXX", "description": "string", "quotes": ["string"], "frequency": number}}
+    ],
+    "buying_signals": [
+        {{"strength": "stark|mittel|schwach", "signal": "string", "quote": "string"}}
+    ],
+    "disc_profiles": [
+        {{"name": "string", "role": "string", "primary_type": "D|I|S|C", "evidence": ["string"]}}
+    ],
+    "jobs_to_be_done": [
+        {{"statement": "string", "functional": "string", "emotional": "string"}}
+    ],
+    "firmographics": [
+        {{"company": "string", "industry": "string", "size": "string", "tech_maturity": "string"}}
+    ],
+    "key_quotes": ["string"]
+}}
+'''
+
+# Aggregation prompt to combine batch results
+AGGREGATION_PROMPT = '''Du bist ein Experte fuer Kundensegmentierung. Kombiniere die folgenden Batch-Analysen zu einer vollstaendigen Segmentierungsanalyse.
+
+## BATCH-ERGEBNISSE:
+
+{batch_results}
+
+## ERSTELLE EINE VOLLSTAENDIGE ANALYSE:
+
+### 1. THEMATISCHE ANALYSE
+- Aggregiere alle Pain Points, Kaufmotivationen, Einwaende, Kaufsignale
+- Berechne Haeufigkeiten ueber alle Batches
+- Identifiziere die wichtigsten Themen
+
+### 2. PSYCHOGRAFISCHE PROFILE
+- Kombiniere DISC-Profile zu uebergreifenden Mustern
+- Aggregiere Jobs-to-be-Done
+- Identifiziere Forces of Progress (Push, Pull, Anxiety, Habit)
+- Klassifiziere Beduerfnisse nach Kano (Basis, Leistung, Begeisterung)
+
+### 3. SEGMENTBILDUNG
+- Bilde 2-4 Kundensegmente basierend auf:
+  - Technische Readiness (hoch/niedrig)
+  - Budget/Groesse (hoch/niedrig)
+- Fuer jedes Segment: Name, Beschreibung, Top Pain Points, JTBD, Einwaende, Kaufsignale
+- Scoring: Fit-Score, Value-Score, Engagement-Score (0-100)
+- CLV-Schaetzung
+
+### 4. STRATEGISCHE EMPFEHLUNGEN
+- Messaging-Framework pro Segment
+- Einwand-Handling
+- DISC-angepasste Kommunikation
+- Priorisierung der Segmente
+
+ANTWORTE IM JSON-FORMAT:
+{{
+    "analysis_metadata": {{
+        "date": "YYYY-MM-DD",
+        "total_transcripts": number,
+        "total_batches": number,
+        "date_range": {{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}}
+    }},
+    "phase2_thematic_analysis": {{
+        "themes": [
+            {{"name": "string", "description": "string", "codes": ["string"], "frequency_percent": number, "typical_quotes": ["string"]}}
+        ],
+        "code_frequency": {{"PP-OPS": number, "PP-TECH": number}}
+    }},
+    "phase3_psychographic": {{
+        "disc_patterns": [
+            {{"type": "D|I|S|C", "frequency_percent": number, "characteristics": ["string"]}}
+        ],
+        "jobs_to_be_done": [
+            {{"statement": "string", "frequency": number}}
+        ],
+        "forces_of_progress": {{
+            "push": ["string"],
+            "pull": ["string"],
+            "anxiety": ["string"],
+            "habit": ["string"]
+        }},
+        "needs": [
+            {{"description": "string", "kano_type": "Basis|Leistung|Begeisterung", "priority": "Hoch|Mittel|Niedrig"}}
+        ]
+    }},
+    "phase4_segments": [
+        {{
+            "name": "string",
+            "description": "string",
+            "firmographics": {{"industries": ["string"], "company_sizes": ["string"], "tech_maturity": "string"}},
+            "psychographics": {{"primary_disc": "D|I|S|C", "decision_style": "string", "risk_tolerance": "string"}},
+            "pain_points": ["string"],
+            "jobs_to_be_done": ["string"],
+            "objections": ["string"],
+            "buying_signals": ["string"],
+            "typical_quotes": ["string"],
+            "scoring": {{"fit_score": number, "value_score": number, "engagement_score": number, "total_score": number}},
+            "clv": {{"first_order": number, "recurring": number, "total_clv": number, "win_rate_percent": number}},
+            "priority": "A|B|C"
+        }}
+    ],
+    "phase5_strategy": {{
+        "focus_segments": ["string"],
+        "messaging": {{
+            "segment_name": {{
+                "value_proposition": "string",
+                "pillars": ["string"],
+                "objection_handling": {{"objection": "response"}},
+                "disc_adaptation": {{"D": "string", "I": "string", "S": "string", "C": "string"}}
+            }}
+        }},
+        "recommendations": ["string"]
+    }}
+}}
+'''
+
+
+def split_meetings_into_batches(meetings: list[Meeting], batch_size: int = 8) -> list[list[Meeting]]:
+    """Split meetings into batches for processing."""
+    batches = []
+    for i in range(0, len(meetings), batch_size):
+        batches.append(meetings[i:i + batch_size])
+    return batches
+
+
+async def analyze_batch(client: anthropic.Anthropic, meetings: list[Meeting], batch_num: int, total_batches: int) -> dict:
+    """Analyze a single batch of meetings."""
+    print(f"\n  Batch {batch_num}/{total_batches}: Analyzing {len(meetings)} meetings...")
+
+    transcripts_text = format_meetings_for_analysis(meetings)
+
+    prompt = BATCH_ANALYSIS_PROMPT.replace("{transcripts}", transcripts_text)
+
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8000,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        response_text = message.content[0].text
+
+        # Extract JSON
+        start_idx = response_text.find('{')
+        end_idx = response_text.rfind('}') + 1
+
+        if start_idx != -1 and end_idx > start_idx:
+            json_str = response_text[start_idx:end_idx]
+            result = json.loads(json_str)
+            print(f"    Extracted: {len(result.get('pain_points', []))} pain points, "
+                  f"{len(result.get('disc_profiles', []))} DISC profiles")
+            return result
+        else:
+            print(f"    Warning: No JSON found in response")
+            return {"error": "no_json", "raw": response_text[:500]}
+
+    except json.JSONDecodeError as e:
+        print(f"    Warning: JSON parse error: {e}")
+        return {"error": "json_parse", "message": str(e)}
+    except Exception as e:
+        print(f"    Error: {e}")
+        return {"error": "api_error", "message": str(e)}
+
+
+async def aggregate_batch_results(client: anthropic.Anthropic, batch_results: list[dict], total_meetings: int) -> dict:
+    """Aggregate all batch results into final analysis."""
+    print(f"\nAggregating {len(batch_results)} batch results...")
+
+    # Format batch results for aggregation
+    results_text = json.dumps(batch_results, ensure_ascii=False, indent=2)
+
+    prompt = AGGREGATION_PROMPT.replace("{batch_results}", results_text)
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=16000,
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    response_text = message.content[0].text
+
+    # Extract JSON
+    try:
+        start_idx = response_text.find('{')
+        end_idx = response_text.rfind('}') + 1
+
+        if start_idx != -1 and end_idx > start_idx:
+            json_str = response_text[start_idx:end_idx]
+            return json.loads(json_str)
+        else:
+            print("Warning: Could not find JSON in aggregation response")
+            return {"raw_response": response_text}
+    except json.JSONDecodeError as e:
+        print(f"Warning: JSON parse error in aggregation: {e}")
+        return {"raw_response": response_text}
+
+
+async def run_batched_analysis(meetings: list[Meeting], batch_size: int = 8) -> dict:
+    """Run analysis in batches and aggregate results."""
+    print(f"\n{'='*60}")
+    print(f"BATCH ANALYSIS")
+    print(f"{'='*60}")
+    print(f"Total meetings: {len(meetings)}")
+    print(f"Batch size: {batch_size}")
+
+    batches = split_meetings_into_batches(meetings, batch_size)
+    print(f"Number of batches: {len(batches)}")
+
+    client = anthropic.Anthropic()
+
+    # Phase 1: Analyze each batch
+    print(f"\nPhase 1: Analyzing batches...")
+    batch_results = []
+    for i, batch in enumerate(batches, 1):
+        result = await analyze_batch(client, batch, i, len(batches))
+        if "error" not in result:
+            batch_results.append(result)
+
+    print(f"\nSuccessfully analyzed {len(batch_results)}/{len(batches)} batches")
+
+    if not batch_results:
+        print("Error: No batches were successfully analyzed")
+        return {"error": "no_successful_batches"}
+
+    # Phase 2: Aggregate results
+    print(f"\nPhase 2: Aggregating results...")
+    final_analysis = await aggregate_batch_results(client, batch_results, len(meetings))
+
+    # Add batch processing metadata
+    final_analysis["_batch_processing"] = {
+        "total_meetings": len(meetings),
+        "batch_size": batch_size,
+        "total_batches": len(batches),
+        "successful_batches": len(batch_results)
+    }
+
+    return final_analysis
+
+
 def save_analysis(analysis: dict, output_path: Path):
     """Save analysis results to file."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -505,6 +776,7 @@ async def main():
     parser.add_argument("--participant", required=True, help="Participant name to filter by (required)")
     parser.add_argument("--min-meetings", type=int, default=50, help="Target number of meetings to find")
     parser.add_argument("--max-batches", type=int, default=20, help="Max API batches to fetch (each batch = 50 meetings)")
+    parser.add_argument("--batch-size", type=int, default=8, help="Meetings per analysis batch (default 8)")
     parser.add_argument("--output", default="analysis_results.json", help="Output file path")
     parser.add_argument("--test", action="store_true", help="Use mock data")
 
@@ -527,22 +799,20 @@ async def main():
         print(f"No meetings found for participant: {args.participant}")
         sys.exit(1)
 
-    # Format for analysis
+    # Save raw transcripts for reference
     transcripts_text = format_meetings_for_analysis(meetings)
-
-    # Save raw transcripts
     transcripts_path = Path.home() / ".nevis" / "transcripts_raw.txt"
     transcripts_path.parent.mkdir(parents=True, exist_ok=True)
     with open(transcripts_path, 'w', encoding='utf-8') as f:
         f.write(transcripts_text)
     print(f"Raw transcripts saved to: {transcripts_path}")
 
-    # Run analysis
-    analysis = await run_analysis_with_claude(transcripts_text)
+    # Run batched analysis (processes in batches, then aggregates)
+    analysis = await run_batched_analysis(meetings, batch_size=args.batch_size)
 
     # Add metadata
     analysis["_metadata"] = {
-        "participant_filter": args.participant or "All meetings",
+        "participant_filter": args.participant,
         "meetings_count": len(meetings),
         "analysis_date": datetime.now().isoformat(),
         "meetings": [
@@ -563,6 +833,7 @@ async def main():
     print("\n" + "="*60)
     print("ANALYSIS COMPLETE")
     print("="*60)
+    print(f"Analyzed {len(meetings)} meetings in batches")
     print(f"\nTo view the results, run:")
     print(f"  python scripts/run_analysis_viewer.py")
 
