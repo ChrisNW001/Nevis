@@ -323,6 +323,8 @@ HTML_TEMPLATE = '''
         <!-- Navigation -->
         <div class="nav-tabs">
             <div class="nav-tab active" onclick="showSection('overview')">Ueberblick</div>
+            <div class="nav-tab" onclick="showSection('painpoints')">Pain Points</div>
+            <div class="nav-tab" onclick="showSection('clusters')">Kundentypen</div>
             <div class="nav-tab" onclick="showSection('themes')">Themen & Codes</div>
             <div class="nav-tab" onclick="showSection('psycho')">Psychografie</div>
             <div class="nav-tab" onclick="showSection('segments')">Segmente</div>
@@ -380,6 +382,149 @@ HTML_TEMPLATE = '''
                     <span class="tag" style="background: #dcfce7; color: #166534;">{{ seg }}</span>
                     {% endfor %}
                 </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Pain Points Section -->
+        <div id="painpoints" class="section">
+            {% if pain_points_catalog %}
+            <div class="card">
+                <h2>Pain Points Katalog</h2>
+                <p style="color: var(--muted); margin-bottom: 1rem;">Alle identifizierten Schmerzpunkte aus {{ metadata.meetings_count }} Meetings</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Kategorie</th>
+                            <th>Pain Point</th>
+                            <th>Haeufigkeit</th>
+                            <th>Schwere</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pp in pain_points_catalog %}
+                        <tr>
+                            <td><code>{{ pp.id }}</code></td>
+                            <td><span class="tag">{{ pp.code }}</span></td>
+                            <td>
+                                <strong>{{ pp.name }}</strong>
+                                <div style="font-size: 0.85rem; color: var(--muted);">{{ pp.description }}</div>
+                            </td>
+                            <td>{{ pp.frequency }} ({{ pp.frequency_percent|default(0) }}%)</td>
+                            <td>
+                                {% if pp.severity == 'hoch' %}
+                                <span style="color: var(--danger);">Hoch</span>
+                                {% elif pp.severity == 'mittel' %}
+                                <span style="color: var(--warning);">Mittel</span>
+                                {% else %}
+                                <span style="color: var(--success);">Niedrig</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% for pp in pain_points_catalog %}
+            <div class="card" style="margin-top: 1rem;">
+                <h3>{{ pp.id }}: {{ pp.name }}</h3>
+                <p>{{ pp.description }}</p>
+                <div style="margin-top: 0.5rem;">
+                    <strong>Typische Zitate:</strong>
+                    {% for quote in pp.typical_quotes %}
+                    <div class="quote">"{{ quote }}"</div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state">
+                <h3>Keine Pain Points gefunden</h3>
+                <p>Fuehren Sie zuerst eine Analyse durch.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Customer Clusters Section -->
+        <div id="clusters" class="section">
+            {% if customer_clusters %}
+            <div class="card">
+                <h2>Kundentypen</h2>
+                <p style="color: var(--muted); margin-bottom: 1rem;">Identifizierte Kundensegmente basierend auf gemeinsamen Merkmalen</p>
+
+                <div class="grid-2">
+                    {% for cluster in customer_clusters %}
+                    <div class="segment-card" style="border-left: 4px solid var(--primary);">
+                        <h3>{{ cluster.name }}</h3>
+                        <span class="tag" style="margin-bottom: 0.5rem;">{{ cluster.id }} - {{ cluster.frequency_percent|default(0) }}% der Kunden</span>
+                        <p>{{ cluster.description }}</p>
+
+                        {% if cluster.characteristics %}
+                        <table style="margin-top: 1rem; font-size: 0.9rem;">
+                            <tr><td><strong>Branchen:</strong></td><td>{{ cluster.characteristics.industries|join(', ') if cluster.characteristics.industries else 'N/A' }}</td></tr>
+                            <tr><td><strong>Groesse:</strong></td><td>{{ cluster.characteristics.company_size|default('N/A') }}</td></tr>
+                            <tr><td><strong>Tech-Reife:</strong></td><td>{{ cluster.characteristics.tech_maturity|default('N/A') }}</td></tr>
+                            <tr><td><strong>Budget:</strong></td><td>{{ cluster.characteristics.budget_level|default('N/A') }}</td></tr>
+                            <tr><td><strong>DISC-Typ:</strong></td><td>{{ cluster.characteristics.primary_disc|default('N/A') }}</td></tr>
+                        </table>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if cluster_pain_point_mapping %}
+            <div class="card" style="margin-top: 1.5rem;">
+                <h2>Pain Point Zuordnung nach Kundentyp</h2>
+                <p style="color: var(--muted); margin-bottom: 1rem;">Welche Pain Points haben welche Kundentypen am haeufigsten</p>
+
+                {% for mapping in cluster_pain_point_mapping %}
+                <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border);">
+                    <h3 style="color: var(--primary);">{{ mapping.cluster_name }}</h3>
+
+                    <div style="margin: 1rem 0;">
+                        <strong>Top 3 Pain Points:</strong>
+                        <div class="tag-list" style="margin-top: 0.5rem;">
+                            {% for pp_id in mapping.top_3_pain_points %}
+                            <span class="tag" style="background: #fee2e2; color: #991b1b;">{{ pp_id }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <table>
+                        <thead>
+                            <tr><th>Pain Point</th><th>Name</th><th>Relevanz</th><th>Haeufigkeit</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for pp in mapping.pain_points %}
+                            <tr>
+                                <td><code>{{ pp.pain_point_id }}</code></td>
+                                <td>{{ pp.pain_point_name }}</td>
+                                <td>
+                                    {% if pp.relevance == 'hoch' %}
+                                    <span style="color: var(--danger);">Hoch</span>
+                                    {% elif pp.relevance == 'mittel' %}
+                                    <span style="color: var(--warning);">Mittel</span>
+                                    {% else %}
+                                    <span>Niedrig</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ pp.frequency_in_cluster|default(0) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <h3>Keine Cluster-Zuordnung verfuegbar</h3>
+                <p>Fuehren Sie zuerst eine Analyse durch.</p>
             </div>
             {% endif %}
         </div>
@@ -840,6 +985,11 @@ def index():
     messaging = phase5.get('messaging', {})
     recommendations = phase5.get('recommendations', [])
 
+    # Pain Points Catalog and Cluster Mapping (new)
+    pain_points_catalog = analysis.get('pain_points_catalog', [])
+    customer_clusters = analysis.get('customer_clusters', [])
+    cluster_pain_point_mapping = analysis.get('cluster_pain_point_mapping', [])
+
     return render_template_string(
         HTML_TEMPLATE,
         analysis=analysis,
@@ -855,6 +1005,9 @@ def index():
         focus_segments=focus_segments,
         messaging=messaging,
         recommendations=recommendations,
+        pain_points_catalog=pain_points_catalog,
+        customer_clusters=customer_clusters,
+        cluster_pain_point_mapping=cluster_pain_point_mapping,
     )
 
 

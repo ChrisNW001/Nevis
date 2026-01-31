@@ -547,39 +547,80 @@ AGGREGATION_PROMPT = '''Du bist ein Experte fuer Kundensegmentierung. Kombiniere
 
 ## ERSTELLE EINE VOLLSTAENDIGE ANALYSE:
 
-### 1. THEMATISCHE ANALYSE
-- Aggregiere alle Pain Points, Kaufmotivationen, Einwaende, Kaufsignale
-- Berechne Haeufigkeiten ueber alle Batches
-- Identifiziere die wichtigsten Themen
+### 1. PAIN POINTS KATALOG
+- Erstelle eine vollstaendige Liste ALLER identifizierten Pain Points
+- Fuer jeden Pain Point: Beschreibung, Haeufigkeit (wie oft genannt), typische Zitate
+- Gruppiere nach Kategorien (PP-OPS, PP-TECH, PP-RES, PP-COMP, PP-CHANGE, PP-KNOW)
 
-### 2. PSYCHOGRAFISCHE PROFILE
-- Kombiniere DISC-Profile zu uebergreifenden Mustern
-- Aggregiere Jobs-to-be-Done
-- Identifiziere Forces of Progress (Push, Pull, Anxiety, Habit)
-- Klassifiziere Beduerfnisse nach Kano (Basis, Leistung, Begeisterung)
+### 2. KUNDENTYPEN / CLUSTER
+- Identifiziere 3-5 distinkte Kundentypen basierend auf:
+  - Branche/Industrie
+  - Unternehmensgroesse
+  - Technische Reife
+  - Entscheidungsverhalten (DISC)
+  - Budget-Level
+- Gib jedem Cluster einen praegenanten Namen und Beschreibung
 
-### 3. SEGMENTBILDUNG
-- Bilde 2-4 Kundensegmente basierend auf:
-  - Technische Readiness (hoch/niedrig)
-  - Budget/Groesse (hoch/niedrig)
-- Fuer jedes Segment: Name, Beschreibung, Top Pain Points, JTBD, Einwaende, Kaufsignale
-- Scoring: Fit-Score, Value-Score, Engagement-Score (0-100)
-- CLV-Schaetzung
+### 3. PAIN POINT - CLUSTER MAPPING
+- Ordne JEDEN Pain Point den Kundentypen zu
+- Zeige welche Pain Points bei welchen Kundentypen am haeufigsten vorkommen
+- Erstelle eine Zuordnungsmatrix
 
 ### 4. STRATEGISCHE EMPFEHLUNGEN
-- Messaging-Framework pro Segment
-- Einwand-Handling
-- DISC-angepasste Kommunikation
-- Priorisierung der Segmente
+- Messaging pro Kundentyp basierend auf deren spezifischen Pain Points
+- Priorisierung der Kundentypen
 
 ANTWORTE IM JSON-FORMAT:
 {{
     "analysis_metadata": {{
         "date": "YYYY-MM-DD",
         "total_transcripts": number,
-        "total_batches": number,
-        "date_range": {{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}}
+        "total_batches": number
     }},
+    "pain_points_catalog": [
+        {{
+            "id": "PP-001",
+            "code": "PP-OPS|PP-TECH|PP-RES|PP-COMP|PP-CHANGE|PP-KNOW",
+            "name": "string (kurzer Name)",
+            "description": "string (ausfuehrliche Beschreibung)",
+            "frequency": number,
+            "frequency_percent": number,
+            "typical_quotes": ["string"],
+            "severity": "hoch|mittel|niedrig"
+        }}
+    ],
+    "customer_clusters": [
+        {{
+            "id": "C1",
+            "name": "string (z.B. 'Tech-affine Mittelstaendler')",
+            "description": "string (ausfuehrliche Beschreibung des Kundentyps)",
+            "characteristics": {{
+                "industries": ["string"],
+                "company_size": "string",
+                "tech_maturity": "hoch|mittel|niedrig",
+                "budget_level": "hoch|mittel|niedrig",
+                "decision_style": "string",
+                "primary_disc": "D|I|S|C"
+            }},
+            "frequency_percent": number,
+            "typical_quotes": ["string"]
+        }}
+    ],
+    "cluster_pain_point_mapping": [
+        {{
+            "cluster_id": "C1",
+            "cluster_name": "string",
+            "pain_points": [
+                {{
+                    "pain_point_id": "PP-001",
+                    "pain_point_name": "string",
+                    "relevance": "hoch|mittel|niedrig",
+                    "frequency_in_cluster": number
+                }}
+            ],
+            "top_3_pain_points": ["PP-001", "PP-002", "PP-003"]
+        }}
+    ],
     "phase2_thematic_analysis": {{
         "themes": [
             {{"name": "string", "description": "string", "codes": ["string"], "frequency_percent": number, "typical_quotes": ["string"]}}
@@ -774,8 +815,8 @@ def save_analysis(analysis: dict, output_path: Path):
 async def main():
     parser = argparse.ArgumentParser(description="Run Customer Segmentation Analysis")
     parser.add_argument("--participant", required=True, help="Participant name to filter by (required)")
-    parser.add_argument("--min-meetings", type=int, default=50, help="Target number of meetings to find")
-    parser.add_argument("--max-batches", type=int, default=20, help="Max API batches to fetch (each batch = 50 meetings)")
+    parser.add_argument("--min-meetings", type=int, default=100, help="Target number of meetings to find (default 100)")
+    parser.add_argument("--max-batches", type=int, default=30, help="Max API batches to fetch (each batch = 50 meetings)")
     parser.add_argument("--batch-size", type=int, default=8, help="Meetings per analysis batch (default 8)")
     parser.add_argument("--output", default="analysis_results.json", help="Output file path")
     parser.add_argument("--test", action="store_true", help="Use mock data")
