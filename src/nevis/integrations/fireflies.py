@@ -86,7 +86,10 @@ class FirefliesIntegration:
             payload["variables"] = variables
 
         response = await self._client.post(FIREFLIES_API_URL, json=payload)
-        response.raise_for_status()
+
+        if response.status_code != 200:
+            logger.error(f"Fireflies API error: {response.status_code} - {response.text}")
+            response.raise_for_status()
 
         result = response.json()
         if "errors" in result:
