@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Search - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Search Meetings</h1>
+</div>
+
+<div class="search-panel">
+    <form method="get" class="search-form">
+        <div class="search-input-group">
+            <input type="text" name="q" value="{{ query }}" placeholder="Search in transcripts, titles, summaries..." autofocus>
+            <button type="submit" class="btn btn-primary">Search</button>
+        </div>
+        <div class="filter-row">
+            <input type="number" name="days" value="{{ request.args.get('days', '') }}" placeholder="Last N days">
+            <input type="text" name="participant" value="{{ request.args.get('participant', '') }}" placeholder="Participant">
+        </div>
+    </form>
+</div>
+
+{% if query %}
+<div class="search-results">
+    <h2>Results for "{{ query }}" ({{ results|length }} meetings found)</h2>
+
+    {% if results %}
+    {% for result in results %}
+    <div class="search-result-card">
+        <div class="result-header">
+            <a href="{{ url_for('meeting_detail', meeting_id=result.meeting.id) }}">
+                <h3>{{ result.meeting.title }}</h3>
+            </a>
+            <span class="result-meta">
+                {{ result.meeting.date.strftime('%Y-%m-%d') if result.meeting.date else 'N/A' }}
+                | {{ result.match_count }} matches
+                | Relevance: {{ (result.relevance_score * 100)|round(0)|int }}%
+            </span>
+        </div>
+        <div class="result-excerpts">
+            {% for sentence, highlighted in result.matches[:3] %}
+            <div class="excerpt">
+                <span class="speaker">{{ sentence.speaker_name }}:</span>
+                {{ highlighted|safe }}
+            </div>
+            {% endfor %}
+            {% if result.matches|length > 3 %}
+            <p class="more-results">... and {{ result.matches|length - 3 }} more matches</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">
+        <p>No results found for "{{ query }}". Try a different search term.</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

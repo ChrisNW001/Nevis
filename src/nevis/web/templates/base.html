@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Nevis Meeting Analyzer{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="{{ url_for('index') }}">Nevis Analyzer</a>
+        </div>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('index') }}" {% if request.endpoint == 'index' %}class="active"{% endif %}>Dashboard</a></li>
+            <li><a href="{{ url_for('meetings_list') }}" {% if request.endpoint == 'meetings_list' %}class="active"{% endif %}>Meetings</a></li>
+            <li><a href="{{ url_for('search') }}" {% if request.endpoint == 'search' %}class="active"{% endif %}>Search</a></li>
+            <li><a href="{{ url_for('aggregate_analysis') }}" {% if request.endpoint == 'aggregate_analysis' %}class="active"{% endif %}>Analysis</a></li>
+            <li><a href="{{ url_for('topics') }}" {% if request.endpoint == 'topics' %}class="active"{% endif %}>Topics</a></li>
+            <li><a href="{{ url_for('speakers') }}" {% if request.endpoint == 'speakers' %}class="active"{% endif %}>Speakers</a></li>
+            <li><a href="{{ url_for('action_items') }}" {% if request.endpoint == 'action_items' %}class="active"{% endif %}>Actions</a></li>
+            <li><a href="{{ url_for('compare_meetings') }}" {% if request.endpoint == 'compare_meetings' %}class="active"{% endif %}>Compare</a></li>
+            <li><a href="{{ url_for('sync') }}" {% if request.endpoint == 'sync' %}class="active"{% endif %}>Sync</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>Nevis Meeting Analyzer - Powered by Fireflies.ai</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

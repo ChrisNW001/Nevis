@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Topics - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Topic Analysis</h1>
+</div>
+
+<div class="filter-panel">
+    <form method="get" class="filter-form">
+        <div class="filter-group">
+            <label>Last N Days</label>
+            <input type="number" name="days" value="{{ filters.get('days', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>Participant</label>
+            <input type="text" name="participant" value="{{ filters.get('participant', '') }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Apply</button>
+        <a href="{{ url_for('topics') }}" class="btn btn-secondary">Clear</a>
+    </form>
+</div>
+
+<div class="content-grid">
+    <div class="main-content">
+        <section class="card">
+            <h2>All Topics</h2>
+            {% if topics %}
+            <div class="topic-grid">
+                {% for topic in topics %}
+                <div class="topic-card">
+                    <div class="topic-name">{{ topic.topic }}</div>
+                    <div class="topic-stats">
+                        <span>{{ topic.meetings|length }} meetings</span>
+                        {% if topic.speakers %}
+                        <span>{{ topic.speakers|length }} speakers</span>
+                        {% endif %}
+                    </div>
+                    <div class="topic-speakers">
+                        {% for speaker in topic.speakers[:3] %}
+                        <span class="tag-small">{{ speaker }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-message">No topics found.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <div class="sidebar">
+        <section class="card">
+            <h2>Recurring Topics</h2>
+            <p class="card-description">Topics appearing in 3+ meetings</p>
+            {% if recurring %}
+            <ul class="topic-list">
+                {% for topic, meetings in recurring %}
+                <li>
+                    <strong>{{ topic }}</strong>
+                    <span class="count">{{ meetings|length }} meetings</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="empty-message">No recurring topics found.</p>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Meetings - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Compare Meetings</h1>
+</div>
+
+<section class="card">
+    <h2>Select Meetings to Compare</h2>
+    <form method="post">
+        <p class="form-description">Select 2 or more meetings to compare their topics, participants, and action items.</p>
+
+        {% if meetings %}
+        <div class="meeting-select-list">
+            {% for meeting in meetings %}
+            <label class="meeting-select-item">
+                <input type="checkbox" name="meeting_ids" value="{{ meeting.id }}">
+                <span class="meeting-info">
+                    <span class="meeting-date">{{ meeting.date.strftime('%Y-%m-%d') if meeting.date else 'N/A' }}</span>
+                    <span class="meeting-title">{{ meeting.title }}</span>
+                    <span class="meeting-duration">{{ meeting.duration_minutes|round(0)|int }} min</span>
+                </span>
+            </label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-primary">Compare Selected</button>
+        {% else %}
+        <p class="empty-message">No meetings available. <a href="{{ url_for('sync') }}">Sync meetings</a> first.</p>
+        {% endif %}
+    </form>
+</section>
+{% endblock %}

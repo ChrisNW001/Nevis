@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Aggregate Analysis</h1>
+    <span class="badge">{{ meeting_count }} meetings</span>
+</div>
+
+<div class="filter-panel">
+    <form method="get" class="filter-form">
+        <div class="filter-group">
+            <label>Last N Days</label>
+            <input type="number" name="days" value="{{ filters.get('days', '') }}" placeholder="e.g., 30">
+        </div>
+        <div class="filter-group">
+            <label>Participant</label>
+            <input type="text" name="participant" value="{{ filters.get('participant', '') }}" placeholder="Name">
+        </div>
+        <div class="filter-group">
+            <label>Keyword</label>
+            <input type="text" name="keyword" value="{{ filters.get('keyword', '') }}" placeholder="Topic">
+        </div>
+        <button type="submit" class="btn btn-primary">Apply Filters</button>
+        <a href="{{ url_for('aggregate_analysis') }}" class="btn btn-secondary">Clear</a>
+    </form>
+</div>
+
+{% if analysis %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number">{{ analysis.meeting_count }}</div>
+        <div class="stat-label">Total Meetings</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ analysis.total_duration_minutes|round(0)|int }}</div>
+        <div class="stat-label">Total Minutes</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ analysis.avg_duration_minutes|round(1) }}</div>
+        <div class="stat-label">Avg Duration (min)</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ analysis.avg_participants|round(1) }}</div>
+        <div class="stat-label">Avg Participants</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ analysis.action_item_count }}</div>
+        <div class="stat-label">Total Action Items</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ analysis.avg_action_items|round(1) }}</div>
+        <div class="stat-label">Avg Actions/Meeting</div>
+    </div>
+</div>
+
+<div class="content-grid">
+    <div class="main-content">
+        <!-- Top Topics -->
+        <section class="card">
+            <h2>Top Topics</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Topic</th>
+                        <th>Mentions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for topic, count in analysis.top_topics[:15] %}
+                    <tr>
+                        <td>{{ topic }}</td>
+                        <td>{{ count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Meetings Per Week -->
+        {% if analysis.meetings_per_week %}
+        <section class="card">
+            <h2>Meetings Per Week</h2>
+            <div class="chart-container">
+                {% for week, count in analysis.meetings_per_week.items()|list|reverse|batch(12)|first|reverse %}
+                <div class="bar-item">
+                    <div class="bar" style="height: {{ count * 30 }}px">{{ count }}</div>
+                    <div class="bar-label">{{ week[-5:] }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+    </div>
+
+    <div class="sidebar">
+        <!-- Top Speakers -->
+        <section class="card">
+            <h2>Top Speakers</h2>
+            <ul class="ranked-list">
+                {% for name, stats in analysis.top_speakers[:10] %}
+                <li>
+                    <span class="rank">{{ loop.index }}</span>
+                    <span class="name">{{ name }}</span>
+                    <span class="value">{{ stats.total_time_minutes|round(0)|int }} min</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <!-- Most Active Participants -->
+        <section class="card">
+            <h2>Most Active Participants</h2>
+            <ul class="ranked-list">
+                {% for name, count in analysis.top_participants[:10] %}
+                <li>
+                    <span class="rank">{{ loop.index }}</span>
+                    <span class="name">{{ name }}</span>
+                    <span class="value">{{ count }} meetings</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+</div>
+
+{% else %}
+<div class="empty-state">
+    <p>No meetings found. <a href="{{ url_for('sync') }}">Sync your meetings</a> to get started.</p>
+</div>
+{% endif %}
+{% endblock %}

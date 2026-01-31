@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}{{ meeting.title }} - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('meetings_list') }}" class="back-link">&larr; Back to Meetings</a>
+    <h1>{{ meeting.title }}</h1>
+</div>
+
+<div class="meeting-meta">
+    <span><strong>Date:</strong> {{ meeting.date.strftime('%Y-%m-%d %H:%M') if meeting.date else 'N/A' }}</span>
+    <span><strong>Duration:</strong> {{ analysis.duration_minutes|round(1) }} minutes</span>
+    <span><strong>Organizer:</strong> {{ meeting.organizer_email }}</span>
+</div>
+
+<div class="content-grid">
+    <div class="main-content">
+        <!-- Speaker Breakdown -->
+        <section class="card">
+            <h2>Speaker Breakdown</h2>
+            {% if analysis.speaker_stats %}
+            <div class="speaker-chart">
+                {% set total_time = analysis.speaker_stats.values()|map(attribute='total_time_seconds')|sum %}
+                {% for name, stats in analysis.speaker_stats.items()|sort(attribute='1.total_time_seconds', reverse=true) %}
+                {% set pct = (stats.total_time_seconds / total_time * 100) if total_time > 0 else 0 %}
+                <div class="speaker-bar">
+                    <div class="speaker-name">{{ name }}</div>
+                    <div class="speaker-progress">
+                        <div class="progress-fill" style="width: {{ pct }}%"></div>
+                    </div>
+                    <div class="speaker-stats">
+                        {{ stats.total_time_minutes|round(1) }} min ({{ pct|round(1) }}%)
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="speaker-metrics">
+                <p><strong>Dominant Speaker:</strong> {{ analysis.dominant_speaker or 'N/A' }}</p>
+                <p><strong>Speaker Balance:</strong> {{ (analysis.speaker_balance * 100)|round(1) }}% (100% = perfectly balanced)</p>
+            </div>
+            {% else %}
+            <p class="empty-message">No speaker data available.</p>
+            {% endif %}
+        </section>
+
+        <!-- Transcript -->
+        <section class="card">
+            <h2>Transcript</h2>
+            {% if meeting.sentences %}
+            <div class="transcript">
+                {% set current_speaker = namespace(name='') %}
+                {% for sentence in meeting.sentences %}
+                {% if sentence.speaker_name != current_speaker.name %}
+                {% set current_speaker.name = sentence.speaker_name %}
+                <div class="speaker-label">{{ sentence.speaker_name }}</div>
+                {% endif %}
+                <p class="sentence">{{ sentence.text }}</p>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-message">No transcript available for this meeting.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <div class="sidebar">
+        <!-- Topics/Keywords -->
+        <section class="card">
+            <h2>Topics</h2>
+            {% if meeting.summary.keywords %}
+            <div class="tag-list">
+                {% for keyword in meeting.summary.keywords %}
+                <span class="tag">{{ keyword }}</span>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-message">No topics extracted.</p>
+            {% endif %}
+        </section>
+
+        <!-- Action Items -->
+        <section class="card">
+            <h2>Action Items ({{ analysis.action_item_count }})</h2>
+            {% if meeting.summary.action_items %}
+            <ul class="action-list">
+                {% for item in meeting.summary.action_items %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="empty-message">No action items recorded.</p>
+            {% endif %}
+        </section>
+
+        <!-- Overview -->
+        <section class="card">
+            <h2>Summary</h2>
+            {% if meeting.summary.overview %}
+            <p>{{ meeting.summary.overview }}</p>
+            {% else %}
+            <p class="empty-message">No summary available.</p>
+            {% endif %}
+        </section>
+
+        <!-- Participants -->
+        <section class="card">
+            <h2>Participants ({{ meeting.participants|length }})</h2>
+            <ul class="participant-list">
+                {% for p in meeting.participants %}
+                <li>{{ p }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Action Items - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Action Items</h1>
+    <span class="badge">{{ total_count }} total</span>
+</div>
+
+<div class="filter-panel">
+    <form method="get" class="filter-form">
+        <div class="filter-group">
+            <label>Last N Days</label>
+            <input type="number" name="days" value="{{ filters.get('days', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>Participant</label>
+            <input type="text" name="participant" value="{{ filters.get('participant', '') }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Apply</button>
+        <a href="{{ url_for('action_items') }}" class="btn btn-secondary">Clear</a>
+    </form>
+</div>
+
+<div class="content-grid">
+    <div class="main-content">
+        <section class="card">
+            <h2>All Action Items</h2>
+            {% if action_items %}
+            <div class="action-items-list">
+                {% set current_meeting = namespace(title='') %}
+                {% for item, meeting_title, date in action_items|sort(attribute='2', reverse=true) %}
+                {% if meeting_title != current_meeting.title %}
+                {% set current_meeting.title = meeting_title %}
+                <div class="meeting-header">
+                    <span class="meeting-date">{{ date.strftime('%Y-%m-%d') if date else 'Unknown' }}</span>
+                    <span class="meeting-title">{{ meeting_title }}</span>
+                </div>
+                {% endif %}
+                <div class="action-item">
+                    <span class="checkbox"></span>
+                    <span class="action-text">{{ item }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-message">No action items found.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <div class="sidebar">
+        <section class="card warning-card">
+            <h2>Potentially Unresolved</h2>
+            <p class="card-description">Items appearing in multiple meetings</p>
+            {% if unresolved %}
+            <ul class="unresolved-list">
+                {% for item, first_meeting, subsequent in unresolved %}
+                <li>
+                    <div class="unresolved-item">{{ item[:80] }}{% if item|length > 80 %}...{% endif %}</div>
+                    <div class="unresolved-meta">
+                        First: {{ first_meeting.date.strftime('%Y-%m-%d') if first_meeting.date else 'Unknown' }}
+                        | Repeated {{ subsequent|length }}x
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="empty-message">No recurring action items found.</p>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

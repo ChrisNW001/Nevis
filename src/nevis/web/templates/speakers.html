@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Speakers - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Speaker Analysis</h1>
+</div>
+
+<div class="filter-panel">
+    <form method="get" class="filter-form">
+        <div class="filter-group">
+            <label>Last N Days</label>
+            <input type="number" name="days" value="{{ filters.get('days', '') }}">
+        </div>
+        <div class="filter-group">
+            <label>Keyword</label>
+            <input type="text" name="keyword" value="{{ filters.get('keyword', '') }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Apply</button>
+        <a href="{{ url_for('speakers') }}" class="btn btn-secondary">Clear</a>
+    </form>
+</div>
+
+<div class="content-grid">
+    <div class="main-content">
+        <section class="card">
+            <h2>Top Speakers by Talk Time</h2>
+            {% if speakers %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Speaker</th>
+                        <th>Total Time</th>
+                        <th>Words</th>
+                        <th>Meetings</th>
+                        <th>Words/Min</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for name, stats in speakers %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ name }}</td>
+                        <td>{{ stats.total_time_minutes|round(1) }} min</td>
+                        <td>{{ stats.total_words }}</td>
+                        <td>{{ stats.meetings_count }}</td>
+                        <td>{{ stats.words_per_minute|round(1) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="empty-message">No speaker data available.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <div class="sidebar">
+        <section class="card">
+            <h2>Most Active Participants</h2>
+            <p class="card-description">By meeting attendance</p>
+            {% if participants %}
+            <ul class="ranked-list">
+                {% for name, count in participants %}
+                <li>
+                    <span class="rank">{{ loop.index }}</span>
+                    <span class="name">{{ name }}</span>
+                    <span class="value">{{ count }} meetings</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="empty-message">No participant data available.</p>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}

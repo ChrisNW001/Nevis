@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Sync - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Sync Meetings</h1>
+</div>
+
+{% if message %}
+<div class="alert alert-success">{{ message }}</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="content-grid">
+    <div class="main-content">
+        <section class="card">
+            <h2>Sync from Fireflies</h2>
+            <p>Connect to Fireflies.ai and download your meeting transcripts.</p>
+            <form method="post">
+                <input type="hidden" name="action" value="sync_fireflies">
+                <button type="submit" class="btn btn-primary btn-large">Sync Now</button>
+            </form>
+            <p class="hint">Make sure FIREFLIES_API_KEY is set in your .env file.</p>
+        </section>
+
+        <section class="card">
+            <h2>Generate Test Data</h2>
+            <p>Generate mock meeting data for testing the analysis features.</p>
+            <form method="post">
+                <input type="hidden" name="action" value="generate_test">
+                <button type="submit" class="btn btn-secondary btn-large">Generate Mock Data</button>
+            </form>
+        </section>
+
+        <section class="card warning-card">
+            <h2>Clear All Data</h2>
+            <p>Remove all synced meetings from local storage.</p>
+            <form method="post" onsubmit="return confirm('Are you sure you want to delete all meeting data?');">
+                <input type="hidden" name="action" value="clear">
+                <button type="submit" class="btn btn-danger">Clear All Data</button>
+            </form>
+        </section>
+    </div>
+
+    <div class="sidebar">
+        <section class="card">
+            <h2>Storage Stats</h2>
+            <ul class="stats-list">
+                <li>
+                    <span class="stat-label">Total Meetings</span>
+                    <span class="stat-value">{{ stats.total_meetings }}</span>
+                </li>
+                <li>
+                    <span class="stat-label">With Transcripts</span>
+                    <span class="stat-value">{{ stats.meetings_with_transcript }}</span>
+                </li>
+                <li>
+                    <span class="stat-label">Total Sentences</span>
+                    <span class="stat-value">{{ stats.total_sentences }}</span>
+                </li>
+                <li>
+                    <span class="stat-label">Last Sync</span>
+                    <span class="stat-value">{{ stats.last_sync[:16] if stats.last_sync else 'Never' }}</span>
+                </li>
+            </ul>
+        </section>
+
+        <section class="card">
+            <h2>Database Location</h2>
+            <code class="db-path">{{ stats.db_path }}</code>
+        </section>
+    </div>
+</div>
+{% endblock %}

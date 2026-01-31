@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Comparison Results - Nevis Meeting Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="{{ url_for('compare_meetings') }}" class="back-link">&larr; New Comparison</a>
+    <h1>Meeting Comparison</h1>
+</div>
+
+<section class="card">
+    <h2>Meetings Compared</h2>
+    <ul class="meeting-list">
+        {% for meeting in meetings %}
+        <li>
+            <a href="{{ url_for('meeting_detail', meeting_id=meeting.id) }}">
+                {{ meeting.date.strftime('%Y-%m-%d') if meeting.date else 'N/A' }} - {{ meeting.title }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+
+<div class="content-grid">
+    <div class="main-content">
+        <!-- Common Topics -->
+        <section class="card">
+            <h2>Common Topics</h2>
+            {% if comparison.common_topics %}
+            <div class="tag-list">
+                {% for topic in comparison.common_topics %}
+                <span class="tag">{{ topic }}</span>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-message">No common topics found.</p>
+            {% endif %}
+        </section>
+
+        <!-- Unique Topics -->
+        <section class="card">
+            <h2>Unique Topics per Meeting</h2>
+            {% for i in range(meetings|length) %}
+            <div class="unique-topics-section">
+                <h3>{{ meetings[i].title }}</h3>
+                {% set unique = comparison.unique_topics.get(meetings[i].id, []) %}
+                {% if unique %}
+                <div class="tag-list">
+                    {% for topic in unique %}
+                    <span class="tag tag-unique">{{ topic }}</span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="empty-message">No unique topics.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </section>
+
+        <!-- Action Item Tracking -->
+        <section class="card">
+            <h2>Action Item Tracking</h2>
+
+            {% if comparison.recurring_action_items %}
+            <div class="action-section">
+                <h3 class="warning">Recurring (Still Open?)</h3>
+                <ul>
+                    {% for item in comparison.recurring_action_items[:5] %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if comparison.resolved_action_items %}
+            <div class="action-section">
+                <h3 class="success">Potentially Resolved</h3>
+                <ul>
+                    {% for item in comparison.resolved_action_items[:5] %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if comparison.new_action_items %}
+            <div class="action-section">
+                <h3>New Items</h3>
+                <ul>
+                    {% for item in comparison.new_action_items[:5] %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if not comparison.recurring_action_items and not comparison.resolved_action_items and not comparison.new_action_items %}
+            <p class="empty-message">No action item changes detected.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <div class="sidebar">
+        <!-- Common Participants -->
+        <section class="card">
+            <h2>Common Participants</h2>
+            {% if comparison.common_participants %}
+            <ul class="participant-list">
+                {% for p in comparison.common_participants %}
+                <li>{{ p }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="empty-message">No common participants.</p>
+            {% endif %}
+        </section>
+
+        <!-- Duration Comparison -->
+        <section class="card">
+            <h2>Duration Comparison</h2>
+            <ul class="duration-list">
+                {% for meeting in meetings %}
+                <li>
+                    <span class="meeting-name">{{ meeting.title[:30] }}...</span>
+                    <span class="duration">{{ meeting.duration_minutes|round(0)|int }} min</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+</div>
+{% endblock %}
