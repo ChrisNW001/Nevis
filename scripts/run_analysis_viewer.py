@@ -10,18 +10,23 @@ Usage:
 """
 
 import argparse
+import asyncio
 import json
+import subprocess
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, jsonify, request
 
 app = Flask(__name__)
 
 # Load analysis data
 ANALYSIS_DATA = None
+ANALYSIS_RUNNING = False
+ANALYSIS_STATUS = ""
 
 
 def load_analysis():
@@ -35,6 +40,85 @@ def load_analysis():
             ANALYSIS_DATA = json.load(f)
     else:
         ANALYSIS_DATA = None
+
+
+def run_analysis_async(participant: str, min_meetings: int):
+    """Run the analysis in a background thread."""
+    global ANALYSIS_RUNNING, ANALYSIS_STATUS
+
+    ANALYSIS_RUNNING = True
+    ANALYSIS_STATUS = "Starte Analyse..."
+
+    try:
+        script_path = Path(__file__).parent / "run_segmentation_analysis.py"
+        cmd = [
+            sys.executable, str(script_path),
+            "--participant", participant,
+            "--min-meetings", str(min_meetings)
+        ]
+
+        ANALYSIS_STATUS = f"Suche Meetings mit {participant}..."
+
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding='utf-8',
+            errors='replace'
+        )
+
+        # Read output line by line
+        for line in process.stdout:
+            line = line.strip()
+            if line:
+                # Update status with relevant lines
+                if "Found #" in line or "Batch" in line or "Aggregating" in line:
+                    ANALYSIS_STATUS = line
+                elif "ANALYSIS COMPLETE" in line:
+                    ANALYSIS_STATUS = "Analyse abgeschlossen!"
+
+        process.wait()
+
+        if process.returncode == 0:
+            ANALYSIS_STATUS = "Analyse erfolgreich abgeschlossen! Seite wird aktualisiert..."
+            load_analysis()
+        else:
+            ANALYSIS_STATUS = f"Fehler bei der Analyse (Code: {process.returncode})"
+
+    except Exception as e:
+        ANALYSIS_STATUS = f"Fehler: {str(e)}"
+    finally:
+        ANALYSIS_RUNNING = False
+
+
+@app.route('/api/start-analysis', methods=['POST'])
+def start_analysis():
+    """Start the segmentation analysis."""
+    global ANALYSIS_RUNNING
+
+    if ANALYSIS_RUNNING:
+        return jsonify({"status": "error", "message": "Analyse laeuft bereits"})
+
+    data = request.json or {}
+    participant = data.get('participant', 'Felix Wietschke')
+    min_meetings = data.get('min_meetings', 100)
+
+    # Start analysis in background thread
+    thread = threading.Thread(target=run_analysis_async, args=(participant, min_meetings))
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({"status": "started", "message": f"Analyse gestartet fuer {participant}"})
+
+
+@app.route('/api/analysis-status')
+def analysis_status():
+    """Get the current analysis status."""
+    return jsonify({
+        "running": ANALYSIS_RUNNING,
+        "status": ANALYSIS_STATUS
+    })
 
 
 HTML_TEMPLATE = '''
@@ -318,6 +402,42 @@ HTML_TEMPLATE = '''
     </div>
 
     <div class="container">
+        <!-- Analysis Control Panel -->
+        <div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid var(--primary);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h3 style="margin: 0;">Neue Analyse starten</h3>
+                    <p style="color: var(--muted); margin: 0.25rem 0 0;">Analysiert Fireflies-Meetings und erstellt Kundensegmentierung</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="participant-input" value="Felix Wietschke"
+                           placeholder="Teilnehmer-Name"
+                           style="padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem;">
+                    <input type="number" id="min-meetings-input" value="100" min="10" max="500"
+                           style="width: 80px; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem;">
+                    <span style="color: var(--muted); font-size: 0.85rem;">Meetings</span>
+                    <button id="start-analysis-btn" onclick="startAnalysis()"
+                            style="background: var(--primary); color: white; border: none; padding: 0.6rem 1.5rem;
+                                   border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+                        Analyse starten
+                    </button>
+                </div>
+            </div>
+            <div id="analysis-status" style="display: none; margin-top: 1rem; padding: 1rem; background: #f0f9ff; border-radius: 6px;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div id="analysis-spinner" style="width: 20px; height: 20px; border: 2px solid var(--primary);
+                         border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                    <span id="status-text">Analyse laeuft...</span>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            @keyframes spin { to { transform: rotate(360deg); } }
+            #start-analysis-btn:hover { background: var(--primary-dark); }
+            #start-analysis-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+        </style>
+
         {% if analysis %}
 
         <!-- Navigation -->
@@ -944,6 +1064,81 @@ HTML_TEMPLATE = '''
             // Show selected section
             document.getElementById(sectionId).classList.add('active');
             event.target.classList.add('active');
+        }
+
+        let statusPollInterval = null;
+
+        async function startAnalysis() {
+            const participant = document.getElementById('participant-input').value;
+            const minMeetings = document.getElementById('min-meetings-input').value;
+            const btn = document.getElementById('start-analysis-btn');
+            const statusDiv = document.getElementById('analysis-status');
+            const statusText = document.getElementById('status-text');
+
+            if (!participant) {
+                alert('Bitte geben Sie einen Teilnehmer-Namen ein');
+                return;
+            }
+
+            // Disable button and show status
+            btn.disabled = true;
+            btn.textContent = 'Analyse laeuft...';
+            statusDiv.style.display = 'block';
+            statusText.textContent = 'Starte Analyse...';
+
+            try {
+                const response = await fetch('/api/start-analysis', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        participant: participant,
+                        min_meetings: parseInt(minMeetings)
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'started') {
+                    // Start polling for status
+                    statusPollInterval = setInterval(pollStatus, 2000);
+                } else {
+                    statusText.textContent = data.message || 'Fehler beim Starten';
+                    btn.disabled = false;
+                    btn.textContent = 'Analyse starten';
+                }
+            } catch (error) {
+                statusText.textContent = 'Fehler: ' + error.message;
+                btn.disabled = false;
+                btn.textContent = 'Analyse starten';
+            }
+        }
+
+        async function pollStatus() {
+            try {
+                const response = await fetch('/api/analysis-status');
+                const data = await response.json();
+
+                document.getElementById('status-text').textContent = data.status;
+
+                if (!data.running) {
+                    // Analysis finished
+                    clearInterval(statusPollInterval);
+                    document.getElementById('start-analysis-btn').disabled = false;
+                    document.getElementById('start-analysis-btn').textContent = 'Analyse starten';
+
+                    // Hide spinner
+                    document.getElementById('analysis-spinner').style.display = 'none';
+
+                    if (data.status.includes('erfolgreich') || data.status.includes('abgeschlossen')) {
+                        // Reload page to show new results
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    }
+                }
+            } catch (error) {
+                console.error('Status poll error:', error);
+            }
         }
     </script>
 </body>
