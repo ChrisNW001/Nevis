@@ -28,7 +28,7 @@ async def list_meetings(limit: int = 20):
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    print(f"\n📅 Your Recent Meetings (last {limit}):\n")
+    print(f"\nYour Recent Meetings (last {limit}):\n")
     print("-" * 80)
 
     meetings = await fireflies.list_transcripts(limit=limit)
@@ -63,7 +63,7 @@ async def search_meetings(query: str):
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    print(f"\n🔍 Searching for: '{query}'\n")
+    print(f"\nSearching for: '{query}'\n")
     print("-" * 80)
 
     meetings = await fireflies.search_transcripts(query)
@@ -85,7 +85,7 @@ async def get_transcript(meeting_id: str):
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    print(f"\n📝 Transcript for meeting: {meeting_id}\n")
+    print(f"\nTranscript for meeting: {meeting_id}\n")
     print("-" * 80)
 
     transcript = await fireflies.get_transcript(meeting_id)
@@ -119,7 +119,7 @@ async def get_summary(meeting_id: str):
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    print(f"\n📋 Summary for meeting: {meeting_id}\n")
+    print(f"\nSummary for meeting: {meeting_id}\n")
     print("-" * 80)
 
     data = await fireflies.get_meeting_summary(meeting_id)
@@ -158,7 +158,7 @@ async def get_actions(meeting_id: str):
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    print(f"\n✅ Action Items for meeting: {meeting_id}\n")
+    print(f"\nAction Items for meeting: {meeting_id}\n")
     print("-" * 80)
 
     actions = await fireflies.get_action_items(meeting_id)
@@ -178,7 +178,7 @@ async def get_speakers(meeting_id: str):
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    print(f"\n🎤 Speaker Stats for meeting: {meeting_id}\n")
+    print(f"\nSpeaker Stats for meeting: {meeting_id}\n")
     print("-" * 80)
 
     stats = await fireflies.get_speaker_stats(meeting_id)
