@@ -2,20 +2,17 @@
 """Run Customer Segmentation Analysis on Fireflies meetings.
 
 This script:
-1. Fetches meetings from Fireflies (with optional participant filter)
-2. Analyzes them using Claude following the segmentation procedure model
-3. Generates a comprehensive analysis report
-4. Results can be viewed with the analysis viewer
+1. Searches ALL meetings in Fireflies for a specific participant
+2. Keeps searching until it finds at least 50 matching meetings (or exhausts all)
+3. Analyzes them using Claude following the segmentation procedure model
+4. Generates a comprehensive analysis report
 
 Usage:
-    # Analyze 50+ meetings (all meetings, no filter)
-    python scripts/run_segmentation_analysis.py
-
-    # Analyze meetings with a specific participant
+    # Find all meetings with Felix Wietschke (searches until 50+ found)
     python scripts/run_segmentation_analysis.py --participant "Felix Wietschke"
 
-    # Specify minimum number of meetings
-    python scripts/run_segmentation_analysis.py --min-meetings 50
+    # Search for more meetings (up to 1000 = 20 batches x 50)
+    python scripts/run_segmentation_analysis.py --participant "Felix Wietschke" --max-batches 20
 """
 
 import argparse
@@ -305,80 +302,103 @@ ANTWORTE IM JSON-FORMAT mit folgender Struktur:
 '''
 
 
-async def fetch_meetings_for_participant(
-    participant_name: str | None = None,
-    min_meetings: int = 50,
-    max_meetings: int = 100
-) -> list[Meeting]:
-    """Fetch meetings, optionally filtering by participant.
+def matches_participant(transcript: dict, participant_name: str) -> bool:
+    """Check if a transcript includes the specified participant."""
+    participant_lower = participant_name.lower()
 
-    Uses pagination to get more than 50 meetings if needed.
+    participants = transcript.get("participants") or []
+    title = transcript.get("title") or ""
+    organizer = transcript.get("organizer_email") or ""
+
+    # Check participants list
+    if any(participant_lower in p.lower() for p in participants):
+        return True
+
+    # Check title
+    if participant_lower in title.lower():
+        return True
+
+    # Check organizer
+    if participant_lower in organizer.lower():
+        return True
+
+    return False
+
+
+async def fetch_meetings_for_participant(
+    participant_name: str,
+    min_meetings: int = 50,
+    max_batches: int = 20
+) -> list[Meeting]:
+    """Fetch meetings for a specific participant.
+
+    Keeps fetching batches until we find at least min_meetings with the participant,
+    or until we've exhausted all available meetings.
+
+    Args:
+        participant_name: Required - the participant name to filter by
+        min_meetings: Target number of matching meetings to find
+        max_batches: Maximum number of API calls to make (safety limit)
     """
-    if participant_name:
-        print(f"\nFetching meetings with participant: {participant_name}")
-    else:
-        print(f"\nFetching all meetings (target: {min_meetings})")
+    print(f"\nSearching for meetings with: {participant_name}")
+    print(f"Target: at least {min_meetings} meetings")
 
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    all_transcripts = []
+    matching_transcripts = []
     skip = 0
     batch_size = 50  # API limit
+    batch_count = 0
+    total_scanned = 0
 
-    # Fetch with pagination until we have enough
-    while len(all_transcripts) < max_meetings:
-        print(f"  Fetching batch {skip // batch_size + 1} (skip={skip})...")
+    # Keep fetching until we have enough matching meetings or run out
+    while len(matching_transcripts) < min_meetings and batch_count < max_batches:
+        batch_count += 1
+        print(f"\n  Batch {batch_count}: Fetching meetings {skip+1} to {skip+batch_size}...")
+
         batch = await fireflies.list_transcripts(limit=batch_size, skip=skip)
 
         if not batch:
-            print(f"  No more meetings available")
+            print(f"  No more meetings available from Fireflies")
             break
 
-        all_transcripts.extend(batch)
-        print(f"  Got {len(batch)} meetings, total: {len(all_transcripts)}")
+        # Filter this batch for matching meetings
+        for t in batch:
+            total_scanned += 1
+            if matches_participant(t, participant_name):
+                matching_transcripts.append(t)
+                title = t.get("title", "Untitled")[:40]
+                print(f"    Found #{len(matching_transcripts)}: {title}")
+
+        print(f"  Scanned {len(batch)} meetings, found {len(matching_transcripts)} matches so far")
 
         if len(batch) < batch_size:
             # No more meetings available
+            print(f"  Reached end of available meetings")
             break
 
         skip += batch_size
 
-    print(f"\nTotal meetings fetched: {len(all_transcripts)}")
+    print(f"\n" + "="*50)
+    print(f"SEARCH COMPLETE")
+    print(f"  Total meetings scanned: {total_scanned}")
+    print(f"  Meetings with '{participant_name}': {len(matching_transcripts)}")
+    print(f"="*50)
 
-    # Filter by participant if specified
-    if participant_name:
-        participant_lower = participant_name.lower()
-        filtered = []
+    if not matching_transcripts:
+        print(f"\nNo meetings found with participant: {participant_name}")
+        await fireflies.shutdown()
+        return []
 
-        for t in all_transcripts:
-            participants = t.get("participants") or []
-            title = t.get("title") or ""
-            organizer = t.get("organizer_email") or ""
+    # Now fetch full transcripts for all matching meetings
+    print(f"\nFetching full transcripts for {len(matching_transcripts)} meetings...")
 
-            is_match = any(participant_lower in p.lower() for p in participants)
-            is_match = is_match or participant_lower in title.lower()
-            is_match = is_match or participant_lower in organizer.lower()
-
-            if is_match:
-                filtered.append(t)
-
-        transcripts_to_fetch = filtered
-        print(f"Filtered to {len(transcripts_to_fetch)} meetings with '{participant_name}'")
-    else:
-        transcripts_to_fetch = all_transcripts[:min_meetings]
-
-    # Ensure we have at least min_meetings (or all available)
-    if len(transcripts_to_fetch) < min_meetings:
-        print(f"\nNote: Only {len(transcripts_to_fetch)} meetings match the criteria.")
-        print(f"Fetching all {len(transcripts_to_fetch)} available meetings.")
-
-    # Fetch full transcripts
     matching_meetings = []
-    for i, t in enumerate(transcripts_to_fetch):
+    for i, t in enumerate(matching_transcripts):
         meeting_id = t.get("id")
         title = t.get("title", "Untitled")
-        print(f"  [{i+1}/{len(transcripts_to_fetch)}] Fetching: {title[:50]}...")
+        print(f"  [{i+1}/{len(matching_transcripts)}] {title[:50]}...")
 
         try:
             full_data = await fireflies.get_transcript(meeting_id)
@@ -389,7 +409,7 @@ async def fetch_meetings_for_participant(
 
     await fireflies.shutdown()
 
-    print(f"\nSuccessfully fetched {len(matching_meetings)} complete meetings")
+    print(f"\nSuccessfully fetched {len(matching_meetings)} complete meetings with {participant_name}")
     return matching_meetings
 
 
@@ -482,9 +502,9 @@ def save_analysis(analysis: dict, output_path: Path):
 
 async def main():
     parser = argparse.ArgumentParser(description="Run Customer Segmentation Analysis")
-    parser.add_argument("--participant", help="Participant name to filter by (optional)")
-    parser.add_argument("--min-meetings", type=int, default=50, help="Minimum number of meetings to analyze")
-    parser.add_argument("--max-meetings", type=int, default=100, help="Maximum number of meetings to fetch")
+    parser.add_argument("--participant", required=True, help="Participant name to filter by (required)")
+    parser.add_argument("--min-meetings", type=int, default=50, help="Target number of meetings to find")
+    parser.add_argument("--max-batches", type=int, default=20, help="Max API batches to fetch (each batch = 50 meetings)")
     parser.add_argument("--output", default="analysis_results.json", help="Output file path")
     parser.add_argument("--test", action="store_true", help="Use mock data")
 
@@ -500,11 +520,11 @@ async def main():
         meetings = await fetch_meetings_for_participant(
             participant_name=args.participant,
             min_meetings=args.min_meetings,
-            max_meetings=args.max_meetings
+            max_batches=args.max_batches
         )
 
     if not meetings:
-        print(f"No meetings found")
+        print(f"No meetings found for participant: {args.participant}")
         sys.exit(1)
 
     # Format for analysis
