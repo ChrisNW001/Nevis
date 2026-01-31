@@ -104,7 +104,6 @@ class FirefliesIntegration:
         query = """
         query {
             user {
-                id
                 email
                 name
                 minutes_consumed
