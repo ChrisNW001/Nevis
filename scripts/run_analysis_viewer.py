@@ -337,7 +337,7 @@ HTML_TEMPLATE = '''
                     <div class="stat-label">Analysierte Meetings</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number">{{ analysis.analysis_metadata.avg_duration_minutes|round(0)|int if analysis.analysis_metadata else 'N/A' }}</div>
+                    <div class="stat-number">{{ (analysis.analysis_metadata.avg_duration_minutes|default(0))|round(0)|int if analysis.analysis_metadata else 'N/A' }}</div>
                     <div class="stat-label">Durchschn. Dauer (Min)</div>
                 </div>
                 <div class="stat-card">
@@ -365,7 +365,7 @@ HTML_TEMPLATE = '''
                         <tr>
                             <td>{{ m.date[:10] if m.date else 'N/A' }}</td>
                             <td>{{ m.title }}</td>
-                            <td>{{ m.duration_minutes|round(0)|int }} min</td>
+                            <td>{{ (m.duration_minutes|default(0))|round(0)|int }} min</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -420,7 +420,7 @@ HTML_TEMPLATE = '''
                             <td>{{ count }}</td>
                             <td>
                                 <div class="score-bar">
-                                    <div class="score-fill" style="width: {{ (count / max_code_count * 100)|round(0) }}px;"></div>
+                                    <div class="score-fill" style="width: {{ ((count|default(0)) / (max_code_count|default(1)) * 100)|round(0) }}px;"></div>
                                 </div>
                             </td>
                         </tr>
@@ -622,14 +622,15 @@ HTML_TEMPLATE = '''
 
                 <div class="grid-2" style="margin-top: 1.5rem;">
                     <div>
+                        {% if seg.scoring %}
                         <h3>Scoring</h3>
                         <table>
                             <tr>
                                 <td>Fit-Score</td>
                                 <td>
                                     <div class="score-bar">
-                                        <div class="score-fill" style="width: {{ seg.scoring.fit_score }}px;"></div>
-                                        <span>{{ seg.scoring.fit_score }}</span>
+                                        <div class="score-fill" style="width: {{ seg.scoring.fit_score|default(0) }}px;"></div>
+                                        <span>{{ seg.scoring.fit_score|default(0) }}</span>
                                     </div>
                                 </td>
                             </tr>
@@ -637,8 +638,8 @@ HTML_TEMPLATE = '''
                                 <td>Value-Score</td>
                                 <td>
                                     <div class="score-bar">
-                                        <div class="score-fill" style="width: {{ seg.scoring.value_score }}px;"></div>
-                                        <span>{{ seg.scoring.value_score }}</span>
+                                        <div class="score-fill" style="width: {{ seg.scoring.value_score|default(0) }}px;"></div>
+                                        <span>{{ seg.scoring.value_score|default(0) }}</span>
                                     </div>
                                 </td>
                             </tr>
@@ -646,27 +647,30 @@ HTML_TEMPLATE = '''
                                 <td>Engagement-Score</td>
                                 <td>
                                     <div class="score-bar">
-                                        <div class="score-fill" style="width: {{ seg.scoring.engagement_score }}px;"></div>
-                                        <span>{{ seg.scoring.engagement_score }}</span>
+                                        <div class="score-fill" style="width: {{ seg.scoring.engagement_score|default(0) }}px;"></div>
+                                        <span>{{ seg.scoring.engagement_score|default(0) }}</span>
                                     </div>
                                 </td>
                             </tr>
                             <tr>
                                 <td><strong>Gesamt-Score</strong></td>
-                                <td><strong>{{ seg.scoring.total_score }}</strong></td>
+                                <td><strong>{{ seg.scoring.total_score|default(0) }}</strong></td>
                             </tr>
                         </table>
+                        {% endif %}
                     </div>
                     <div>
+                        {% if seg.clv %}
                         <h3>Customer Lifetime Value</h3>
-                        <div class="clv-highlight">{{ "{:,.0f}".format(seg.clv.total_clv) }} EUR</div>
+                        <div class="clv-highlight">{{ "{:,.0f}".format(seg.clv.total_clv|default(0)) }} EUR</div>
                         <table style="margin-top: 0.5rem;">
-                            <tr><td>Erstauftrag</td><td>{{ "{:,.0f}".format(seg.clv.first_order) }} EUR</td></tr>
-                            <tr><td>Jaehrl. Recurring</td><td>{{ "{:,.0f}".format(seg.clv.recurring) }} EUR</td></tr>
-                            <tr><td>Lebensdauer</td><td>{{ seg.clv.lifetime_years }} Jahre</td></tr>
-                            <tr><td>Win-Rate</td><td>{{ seg.clv.win_rate_percent }}%</td></tr>
-                            <tr><td>Aufwand</td><td>{{ seg.clv.effort }}</td></tr>
+                            <tr><td>Erstauftrag</td><td>{{ "{:,.0f}".format(seg.clv.first_order|default(0)) }} EUR</td></tr>
+                            <tr><td>Jaehrl. Recurring</td><td>{{ "{:,.0f}".format(seg.clv.recurring|default(0)) }} EUR</td></tr>
+                            <tr><td>Lebensdauer</td><td>{{ seg.clv.lifetime_years|default('N/A') }} Jahre</td></tr>
+                            <tr><td>Win-Rate</td><td>{{ seg.clv.win_rate_percent|default(0) }}%</td></tr>
+                            <tr><td>Aufwand</td><td>{{ seg.clv.effort|default('N/A') }}</td></tr>
                         </table>
+                        {% endif %}
                     </div>
                 </div>
 
