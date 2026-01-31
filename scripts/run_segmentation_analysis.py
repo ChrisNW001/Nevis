@@ -2,13 +2,20 @@
 """Run Customer Segmentation Analysis on Fireflies meetings.
 
 This script:
-1. Fetches meetings with a specific participant from Fireflies
-2. Analyzes them using Claude Opus 4.5 following the segmentation procedure model
+1. Fetches meetings from Fireflies (with optional participant filter)
+2. Analyzes them using Claude following the segmentation procedure model
 3. Generates a comprehensive analysis report
-4. Starts a web server to visualize the results
+4. Results can be viewed with the analysis viewer
 
 Usage:
+    # Analyze 50+ meetings (all meetings, no filter)
+    python scripts/run_segmentation_analysis.py
+
+    # Analyze meetings with a specific participant
     python scripts/run_segmentation_analysis.py --participant "Felix Wietschke"
+
+    # Specify minimum number of meetings
+    python scripts/run_segmentation_analysis.py --min-meetings 50
 """
 
 import argparse
@@ -298,43 +305,91 @@ ANTWORTE IM JSON-FORMAT mit folgender Struktur:
 '''
 
 
-async def fetch_meetings_for_participant(participant_name: str) -> list[Meeting]:
-    """Fetch all meetings involving a specific participant."""
-    print(f"\nFetching meetings with participant: {participant_name}")
+async def fetch_meetings_for_participant(
+    participant_name: str | None = None,
+    min_meetings: int = 50,
+    max_meetings: int = 100
+) -> list[Meeting]:
+    """Fetch meetings, optionally filtering by participant.
+
+    Uses pagination to get more than 50 meetings if needed.
+    """
+    if participant_name:
+        print(f"\nFetching meetings with participant: {participant_name}")
+    else:
+        print(f"\nFetching all meetings (target: {min_meetings})")
 
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    # Get all transcripts (API limit is 50)
-    all_transcripts = await fireflies.list_transcripts(limit=50)
-    print(f"Found {len(all_transcripts)} total meetings")
+    all_transcripts = []
+    skip = 0
+    batch_size = 50  # API limit
 
+    # Fetch with pagination until we have enough
+    while len(all_transcripts) < max_meetings:
+        print(f"  Fetching batch {skip // batch_size + 1} (skip={skip})...")
+        batch = await fireflies.list_transcripts(limit=batch_size, skip=skip)
+
+        if not batch:
+            print(f"  No more meetings available")
+            break
+
+        all_transcripts.extend(batch)
+        print(f"  Got {len(batch)} meetings, total: {len(all_transcripts)}")
+
+        if len(batch) < batch_size:
+            # No more meetings available
+            break
+
+        skip += batch_size
+
+    print(f"\nTotal meetings fetched: {len(all_transcripts)}")
+
+    # Filter by participant if specified
+    if participant_name:
+        participant_lower = participant_name.lower()
+        filtered = []
+
+        for t in all_transcripts:
+            participants = t.get("participants") or []
+            title = t.get("title") or ""
+            organizer = t.get("organizer_email") or ""
+
+            is_match = any(participant_lower in p.lower() for p in participants)
+            is_match = is_match or participant_lower in title.lower()
+            is_match = is_match or participant_lower in organizer.lower()
+
+            if is_match:
+                filtered.append(t)
+
+        transcripts_to_fetch = filtered
+        print(f"Filtered to {len(transcripts_to_fetch)} meetings with '{participant_name}'")
+    else:
+        transcripts_to_fetch = all_transcripts[:min_meetings]
+
+    # Ensure we have at least min_meetings (or all available)
+    if len(transcripts_to_fetch) < min_meetings:
+        print(f"\nNote: Only {len(transcripts_to_fetch)} meetings match the criteria.")
+        print(f"Fetching all {len(transcripts_to_fetch)} available meetings.")
+
+    # Fetch full transcripts
     matching_meetings = []
-    participant_lower = participant_name.lower()
+    for i, t in enumerate(transcripts_to_fetch):
+        meeting_id = t.get("id")
+        title = t.get("title", "Untitled")
+        print(f"  [{i+1}/{len(transcripts_to_fetch)}] Fetching: {title[:50]}...")
 
-    for t in all_transcripts:
-        # Check if participant is in this meeting
-        participants = t.get("participants") or []
-        title = t.get("title") or ""
-
-        is_match = any(participant_lower in p.lower() for p in participants)
-        is_match = is_match or participant_lower in title.lower()
-
-        if is_match:
-            meeting_id = t.get("id")
-            print(f"  Found matching meeting: {t.get('title')}")
-
-            # Fetch full transcript
-            try:
-                full_data = await fireflies.get_transcript(meeting_id)
-                meeting = Meeting.from_fireflies(full_data, full_transcript=True)
-                matching_meetings.append(meeting)
-            except Exception as e:
-                print(f"    Error fetching: {e}")
+        try:
+            full_data = await fireflies.get_transcript(meeting_id)
+            meeting = Meeting.from_fireflies(full_data, full_transcript=True)
+            matching_meetings.append(meeting)
+        except Exception as e:
+            print(f"    Error: {e}")
 
     await fireflies.shutdown()
 
-    print(f"\nFound {len(matching_meetings)} meetings with {participant_name}")
+    print(f"\nSuccessfully fetched {len(matching_meetings)} complete meetings")
     return matching_meetings
 
 
@@ -427,7 +482,9 @@ def save_analysis(analysis: dict, output_path: Path):
 
 async def main():
     parser = argparse.ArgumentParser(description="Run Customer Segmentation Analysis")
-    parser.add_argument("--participant", required=True, help="Participant name to filter by")
+    parser.add_argument("--participant", help="Participant name to filter by (optional)")
+    parser.add_argument("--min-meetings", type=int, default=50, help="Minimum number of meetings to analyze")
+    parser.add_argument("--max-meetings", type=int, default=100, help="Maximum number of meetings to fetch")
     parser.add_argument("--output", default="analysis_results.json", help="Output file path")
     parser.add_argument("--test", action="store_true", help="Use mock data")
 
@@ -440,10 +497,14 @@ async def main():
         print("Using mock data for testing...")
         meetings = generate_meeting_set(count=5)
     else:
-        meetings = await fetch_meetings_for_participant(args.participant)
+        meetings = await fetch_meetings_for_participant(
+            participant_name=args.participant,
+            min_meetings=args.min_meetings,
+            max_meetings=args.max_meetings
+        )
 
     if not meetings:
-        print(f"No meetings found for participant: {args.participant}")
+        print(f"No meetings found")
         sys.exit(1)
 
     # Format for analysis
@@ -461,7 +522,7 @@ async def main():
 
     # Add metadata
     analysis["_metadata"] = {
-        "participant_filter": args.participant,
+        "participant_filter": args.participant or "All meetings",
         "meetings_count": len(meetings),
         "analysis_date": datetime.now().isoformat(),
         "meetings": [
