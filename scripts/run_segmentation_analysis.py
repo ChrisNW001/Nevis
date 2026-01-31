@@ -305,8 +305,8 @@ async def fetch_meetings_for_participant(participant_name: str) -> list[Meeting]
     fireflies = FirefliesIntegration.from_env()
     await fireflies.initialize()
 
-    # Get all transcripts
-    all_transcripts = await fireflies.list_transcripts(limit=100)
+    # Get all transcripts (API limit is 50)
+    all_transcripts = await fireflies.list_transcripts(limit=50)
     print(f"Found {len(all_transcripts)} total meetings")
 
     matching_meetings = []
