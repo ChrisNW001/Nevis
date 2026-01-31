@@ -386,7 +386,7 @@ async def run_analysis_with_claude(transcripts_text: str) -> dict:
 
     client = anthropic.Anthropic()
 
-    prompt = ANALYSIS_PROMPT.format(transcripts=transcripts_text)
+    prompt = ANALYSIS_PROMPT.replace("{transcripts}", transcripts_text)
 
     message = client.messages.create(
         model="claude-sonnet-4-20250514",
