@@ -104,6 +104,18 @@ All project config lives in `pyproject.toml`:
 - Ruff settings under `[tool.ruff]`
 - Pytest settings under `[tool.pytest.ini_options]`
 
+## Roadmap
+
+See `docs/ROADMAP.md` for the full capability plan. The seven phases in priority order:
+
+1. **Core Agent Loop** -- LLM provider abstraction, ReAct reasoning, tool system, context management
+2. **Memory & Planning** -- Working/long-term memory, agentic RAG, plan-and-execute
+3. **Observability** -- OpenTelemetry tracing, structured audit logs, metrics
+4. **Multi-Agent** -- Subagent spawning, orchestration patterns, A2A protocol
+5. **Guardrails** -- Prompt shields, PII detection, RBAC, sandboxed execution
+6. **Interfaces** -- FastAPI REST, WebSocket, Slack/Discord bots, MCP server
+7. **Self-Improvement** -- Reflection loops, skill learning, cross-session continuity
+
 ## Important Notes
 
 - Never commit `.env` files -- they are gitignored. Use `.env.example` as a template.
