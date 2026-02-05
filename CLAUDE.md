@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Nevis is a Master AI Assistant that connects everything -- a central orchestration layer that integrates and coordinates multiple AI services, tools, and projects. Currently at v0.1.0 (early development).
+Nevis is a Master AI Assistant that connects everything -- a central orchestration layer with all 7 capability layers implemented. Version 0.2.0.
 
 ## Tech Stack
 
@@ -12,113 +12,155 @@ Nevis is a Master AI Assistant that connects everything -- a central orchestrati
 - **HTTP Client:** httpx
 - **Config Validation:** Pydantic v2
 - **Environment:** python-dotenv
-- **External APIs:** Notion (implemented), OpenAI/Anthropic (planned)
+- **LLM Providers:** Anthropic Claude, OpenAI GPT (optional deps `[llm]`)
+- **API Framework:** FastAPI (optional dep `[api]`)
+- **External APIs:** Notion
 
 ## Project Structure
 
 ```
 src/nevis/
-  __init__.py              # Package root, exports __version__
-  main.py                  # Entry point, logging setup, async run loop
+  __init__.py                    # Package root, __version__
+  main.py                       # Entry point, logging, async run loop
   core/
-    __init__.py            # Exports NevisAssistant
-    assistant.py           # Central orchestrator class
+    assistant.py                 # NevisAssistant -- wires all 7 layers
+    agent_loop.py                # ReAct loop: think -> act -> observe
+    conversation.py              # Messages, compaction, forking
+    planner.py                   # Plan-and-execute (goal -> DAG of sub-tasks)
+  llm/
+    base.py                      # Abstract LLMProvider, Message, ToolCall
+    anthropic.py                 # AnthropicProvider (Claude)
+    openai.py                    # OpenAIProvider (GPT)
+  tools/
+    base.py                      # @tool decorator, auto JSON Schema
+    registry.py                  # ToolRegistry
+    builtin/                     # web_search, code_exec, file_ops
+  memory/
+    base.py                      # Abstract MemoryStore, MemoryEntry
+    working.py                   # Scratchpad, variables, task stack
+    episodic.py                  # Timestamped action/outcome log
+    semantic.py                  # Vector/keyword search, document ingestion
+    procedural.py                # Learned Skills with versioning
+  agents/
+    base.py                      # BaseAgent, AgentConfig
+    manager.py                   # Sequential, parallel, pipeline, debate
+    router.py                    # Keyword-based task routing
+  observability/
+    tracing.py                   # Tracer with nested Spans
+    audit.py                     # Structured JSONL audit trail
+    metrics.py                   # Counters, histograms, gauges
+  guardrails/
+    pipeline.py                  # Pre/post check chain
+    prompt_shield.py             # Prompt injection detection
+    pii_detector.py              # PII masking (email, SSN, phone, CC)
+    topic_filter.py              # Topic allowlist/blocklist
+    permissions.py               # RBAC, human-in-the-loop gates
+  api/
+    server.py                    # FastAPI REST + SSE + WebSocket
+    webhooks.py                  # HMAC-signed webhook delivery with retry
+  self_improve/
+    reflection.py                # Evaluate -> critique -> revise loop
+    skill_learner.py             # Extract skills from audit log
+    continuity.py                # Cross-session notes and context
   integrations/
-    __init__.py            # Exports NotionIntegration, NotionConfig
-    notion.py              # Notion API integration (async)
+    notion.py                    # Notion API (async)
 tests/
-  __init__.py
-  test_assistant.py        # Tests for NevisAssistant
+  test_assistant.py              # Core assistant tests
+  test_tools.py                  # Tool system tests
+  test_memory.py                 # Memory store tests
+  test_guardrails.py             # Guardrails and permissions tests
+  test_observability.py          # Tracing, audit, metrics tests
 ```
 
 ## Quick Reference Commands
 
 ```bash
-# Install (editable, with dev deps)
-pip install -e ".[dev]"
+# Install
+pip install -e ".[dev]"           # Full dev (all extras + test/lint)
+pip install -e ".[llm]"           # LLM providers only
+pip install -e ".[api]"           # FastAPI server only
 
-# Run the assistant
-nevis                      # CLI entry point
-python -m nevis.main       # Module entry point
+# Run
+nevis                             # CLI entry point
+python -m nevis.main              # Module entry point
+uvicorn nevis.api.server:create_app --factory --reload  # API server
 
-# Tests
-pytest                     # Run all tests (asyncio_mode=auto)
-pytest tests/ -v           # Verbose output
+# Test
+pytest                            # All tests (asyncio_mode=auto)
+pytest tests/test_guardrails.py   # Specific module
 
-# Linting and formatting
-ruff check src/            # Lint
-ruff check src/ --fix      # Lint with auto-fix
-ruff format src/           # Format code
+# Lint
+ruff check src/                   # Lint
+ruff check src/ --fix             # Auto-fix
+ruff format src/                  # Format
 ```
 
 ## Code Conventions
 
-- **Async-first:** All I/O operations use async/await. Tests use pytest-asyncio with `asyncio_mode = "auto"`.
-- **Type hints:** Modern Python syntax (PEP 604 union types with `|`, `dict[str, Any]` over `Dict[str, Any]`).
-- **Line length:** 100 characters max (configured in ruff).
-- **Target version:** Python 3.10 (ruff target-version).
-- **Logging:** Use `logging.getLogger(__name__)` per module. Log format: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`.
-- **Config:** Environment-based via python-dotenv. Use Pydantic `BaseModel` for config validation. Factory classmethod `from_env()` for constructing from env vars.
-- **Exports:** Each subpackage uses `__all__` in `__init__.py` to define its public API.
-- **Test style:** Tests grouped in classes (e.g., `TestNevisAssistant`), use pytest fixtures for setup, async test methods.
+- **Async-first:** All I/O uses async/await. Tests use pytest-asyncio with `asyncio_mode = "auto"`.
+- **Type hints:** Modern PEP 604 (`str | None`, `dict[str, Any]`).
+- **Line length:** 100 chars (ruff). **Target:** Python 3.10.
+- **Logging:** `logging.getLogger(__name__)` per module.
+- **Config:** Pydantic `BaseModel` + `from_env()` factory classmethod.
+- **Exports:** `__all__` in every `__init__.py`.
+- **Tests:** Grouped in classes, pytest fixtures, async methods.
+- **Tools:** `@tool` decorator auto-generates JSON Schema from type hints.
+- **Memory:** JSONL files in `.nevis/` (gitignored). Swap backends for prod.
 
-## Architecture
+## Architecture -- The 7 Layers
 
-### Integration Pattern
+`NevisAssistant` wires all layers. Chat pipeline:
 
-New integrations follow this structure:
+```
+User message
+  -> GuardrailPipeline.check_input (prompt shield, PII mask)
+  -> AgentLoop.run (ReAct: LLM -> tool calls -> observe -> repeat)
+  -> GuardrailPipeline.check_output (PII mask)
+  -> EpisodicMemory.store_event
+  -> MetricsCollector.record_agent_turn
+  -> Response
+```
+
+| Layer | Package | Key Classes |
+|-------|---------|-------------|
+| 1. Agent Loop | `core/`, `llm/`, `tools/` | `AgentLoop`, `LLMProvider`, `ToolRegistry` |
+| 2. Memory | `memory/` | `WorkingMemory`, `EpisodicMemory`, `SemanticMemory`, `ProceduralMemory`, `Planner` |
+| 3. Multi-Agent | `agents/` | `BaseAgent`, `AgentManager`, `TaskRouter` |
+| 4. Observability | `observability/` | `Tracer`, `AuditLogger`, `MetricsCollector` |
+| 5. Guardrails | `guardrails/` | `GuardrailPipeline`, `PromptShield`, `PIIDetector`, `PermissionManager` |
+| 6. Interfaces | `api/` | `create_app`, `WebhookManager` |
+| 7. Self-Improve | `self_improve/` | `ReflectionLoop`, `SkillLearner`, `SessionContinuity` |
+
+### Adding a New Tool
+
+```python
+from nevis.tools.base import tool
+
+@tool(name="my_tool", description="Does something useful.")
+async def my_tool(param: str, count: int = 5) -> dict:
+    return {"result": param * count}
+```
+
+### Adding a New Integration
 
 1. Create `src/nevis/integrations/<name>.py`
-2. Define a Pydantic config class (e.g., `NotionConfig`)
-3. Create an integration class with:
-   - `__init__(self, config)` -- accepts validated config
-   - `from_env()` classmethod -- constructs from environment variables
-   - `initialize()` async method -- establishes connections
-   - `shutdown()` async method -- cleanup
-4. Export from `src/nevis/integrations/__init__.py`
-5. Register with `NevisAssistant.register_integration(name, instance)`
-
-### Core Orchestration
-
-`NevisAssistant` is the central hub:
-- Maintains a registry of integrations (`self.integrations: dict[str, Any]`)
-- Routes actions via `execute(action, **kwargs)`
-- Manages lifecycle: `initialize()` -> `run()` -> `shutdown()`
-- Graceful shutdown iterates all integrations and calls their `shutdown()` methods
+2. Pydantic config + class with `from_env()`, `initialize()`, `shutdown()`
+3. Export from `__init__.py`, register with `assistant.register_integration()`
 
 ## Environment Variables
 
-See `.env.example` for the full template. Key variables:
-
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NOTION_TOKEN` | For Notion | Notion API integration token |
-| `NOTION_DEFAULT_DATABASE_ID` | No | Default database for queries |
+| `ANTHROPIC_API_KEY` | For Claude | Anthropic API key |
+| `OPENAI_API_KEY` | For GPT | OpenAI API key |
+| `NOTION_TOKEN` | For Notion | Notion integration token |
 | `LOG_LEVEL` | No | Logging level (default: INFO) |
-
-## Configuration
-
-All project config lives in `pyproject.toml`:
-- Project metadata and dependencies under `[project]`
-- Dev dependencies under `[project.optional-dependencies.dev]`
-- Ruff settings under `[tool.ruff]`
-- Pytest settings under `[tool.pytest.ini_options]`
-
-## Roadmap
-
-See `docs/ROADMAP.md` for the full capability plan. The seven phases in priority order:
-
-1. **Core Agent Loop** -- LLM provider abstraction, ReAct reasoning, tool system, context management
-2. **Memory & Planning** -- Working/long-term memory, agentic RAG, plan-and-execute
-3. **Observability** -- OpenTelemetry tracing, structured audit logs, metrics
-4. **Multi-Agent** -- Subagent spawning, orchestration patterns, A2A protocol
-5. **Guardrails** -- Prompt shields, PII detection, RBAC, sandboxed execution
-6. **Interfaces** -- FastAPI REST, WebSocket, Slack/Discord bots, MCP server
-7. **Self-Improvement** -- Reflection loops, skill learning, cross-session continuity
 
 ## Important Notes
 
-- Never commit `.env` files -- they are gitignored. Use `.env.example` as a template.
-- The project uses a `src/` layout -- source code is under `src/nevis/`, not at the repo root.
-- Pagination is handled automatically in Notion operations (cursor-based).
-- The main run loop (`assistant.run()`) requires `initialize()` to be called first or it raises `RuntimeError`.
+- Never commit `.env` files -- gitignored. Use `.env.example`.
+- `src/` layout -- source under `src/nevis/`, not repo root.
+- LLM providers lazy-load (no hard dep on anthropic/openai at import).
+- Call `configure_llm(provider)` before `initialize()` to enable agent loop.
+- Memory persists to `.nevis/` (JSONL). Swap for DB in production.
+- See `docs/ROADMAP.md` for the original planning document.
